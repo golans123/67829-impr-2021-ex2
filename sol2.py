@@ -2,10 +2,13 @@ import math
 
 import numpy as np
 import scipy.io.wavfile
-# *********************** DFT ********************************
+# for ex2_helper
+from scipy import signal
+from scipy.ndimage.interpolation import map_coordinates
+# *********************** 1. DFT ********************************
 
 
-# *********************** 1D DFT *****************************
+# *********************** 1.1 1D DFT *****************************
 def dft_idft_helper(signal, exp_power_coefficient, transform_denominator):
     """
 
@@ -57,7 +60,7 @@ def IDFT(fourier_signal):
     return np.real_if_close(inverse_fourier_transform)  # todo: which to use?
 
 
-# *********************** 2D DFT *****************************
+# *********************** 1.2 2D DFT *****************************
 def DFT2(image):
     """
     DFT in 2D
@@ -88,7 +91,8 @@ def IDFT2(fourier_image):
     return image
 
 
-# ********************************  Speech Fast Forward  ********************
+# ********************************  2. Speech Fast Forward  ********************
+# 2.1
 def change_rate(filename, ratio):
     """
      Fast forward by rate change. changes the duration of an audio file by
@@ -106,10 +110,11 @@ def change_rate(filename, ratio):
                            data=data)
 
 
+# 2.2
 def resize(data, ratio):
     """
-    where: data is a 1D ndarray of dtype float64 or complex128(*) representing
-    the original sample points, and  this function should call DFT (1) and IDFT
+    data is a 1D ndarray of dtype float64 or complex128(*) representing
+    the original sample points, and this function should call DFT (1) and IDFT
     (2). In Fourier representation, you can use np.fft.fftshift (and
     np.fft.ifftshift later) in order to shift the zero-frequency component to
     the center of the spectrum before clipping the high frequencies.
@@ -122,7 +127,7 @@ def resize(data, ratio):
     fourier_signal = DFT(data)
     # shift the zero-frequency component to the center of the spectrum
     fourier_signal = np.fft.fftshift(fourier_signal)
-    # clip the high frequencies.
+    # todo: clip the high frequencies.
     fourier_signal = fourier_signal[:]
     # shift back frequencies order
     fourier_signal = np.fft.ifftshift(fourier_signal)
@@ -151,4 +156,179 @@ def change_samples(filename, ratio):
     new_sample_points = resize(data, ratio)
     scipy.io.wavfile.write(filename="change_rate.wav", rate=rate,
                            data=new_sample_points)
+    # todo:
+    # Note 1: In case of slowing down, we add the needed amount of zeros at the
+    # high Fourier frequencies.
+
+    # Note 2: In case you need to pad with zeros and you have 2 unequal sides,
+    # you may choose which side to pad with the one extra 0.
+    # example: an array with size 25, and ratio=0.5. pad with 25 zeros, you may
+    # choose which side has 13 and which one has 12.
+
+    # Note 3: In case you end up with a non-integer, floor it.
     return new_sample_points
+
+
+# 2.3
+def resize_spectrogram(data, ratio):
+    """
+    a function that speeds up a WAV file, without changing the pitch, using
+    spectrogram scaling. This is done by computing the spectrogram, changing
+    the number of spectrogram columns, and creating back the audio.
+
+    use the provided functions stft and istft in order to transfer the data to
+    the spectrogram and back. use the default parameters for win_length and
+    hop_length.
+
+    Each row in the spectrogram can be resized using resize according to ratio.
+    Notice that while each row in the spectrogram should be resized correctly
+    according to the ratio, the size of the rescaled 1D array will not be
+    precisely accurate due to the window size.
+
+    :param data: a 1D ndarray of dtype float64 representing the original sample
+    points.
+    :param ratio: a positive float64 representing the rate change of the WAV
+    file. 0.25 < ratio < 4.
+    :return:  return the new sample points according to ratio with the same
+    datatype as data.
+    """
+    # transfer the data to the spectrogram
+    transposed_stft_matrix = stft(y=data)
+
+    # resize each row in the spectrogram using resize according to ratio.
+    new_sample_points = np.zeros(len(transposed_stft_matrix))
+    for i in range(len(transposed_stft_matrix)):
+        new_sample_points[i] = resize(data, ratio)
+
+    # transfer the data back from a spectrogram
+    y_rec = istft(stft_matrix=new_sample_points)
+    return y_rec
+
+
+# 2.4
+def resize_vocoder(data, ratio):
+    """
+    a function that speedups a WAV file by phase vocoding its spectrogram.
+    Phase vocoding is the process of scaling the spectrogram, but includes the
+    correction of the phases of each frequency according to the shift of each
+    window.
+
+    You can use the supplied function phase_vocoder(spec, ratio), which scales
+    the spectrogram spec by ratio and corrects the phases. You may also use the
+    function phase_vocoder from librosa, which has a different interface
+
+    :param data: a 1D ndarray of dtype float64 representing the original sample
+    points
+    :param ratio: a positive float64 representing the rate change of the WAV
+    file. 0.25 < ratio < 4.
+    :return: the given data rescaled according to ratio with the same datatype
+    as data.
+    """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ************************* from ex2_helper ********************************
+def stft(y, win_length=640, hop_length=160):
+    fft_window = signal.windows.hann(win_length, False)
+
+    # Window the time series.
+    n_frames = 1 + (len(y) - win_length) // hop_length
+    frames = [y[s:s + win_length] for s in np.arange(n_frames) * hop_length]
+
+    stft_matrix = np.fft.fft(fft_window * frames, axis=1)
+    return stft_matrix.T
+
+
+def istft(stft_matrix, win_length=640, hop_length=160):
+    n_frames = stft_matrix.shape[1]
+    y_rec = np.zeros(win_length + hop_length * (n_frames - 1), dtype=np.float)
+    ifft_window_sum = np.zeros_like(y_rec)
+
+    ifft_window = signal.windows.hann(win_length, False)[:, np.newaxis]
+    win_sq = ifft_window.squeeze() ** 2
+
+    # invert the block and apply the window function
+    ytmp = ifft_window * np.fft.ifft(stft_matrix, axis=0).real
+
+    for frame in range(n_frames):
+        frame_start = frame * hop_length
+        frame_end = frame_start + win_length
+        y_rec[frame_start: frame_end] += ytmp[:, frame]
+        ifft_window_sum[frame_start: frame_end] += win_sq
+
+    # Normalize by sum of squared window
+    y_rec[ifft_window_sum > 0] /= ifft_window_sum[ifft_window_sum > 0]
+    return y_rec
+
+
+def phase_vocoder(spec, ratio):
+    num_timesteps = int(spec.shape[1] / ratio)
+    time_steps = np.arange(num_timesteps) * ratio
+
+    # interpolate magnitude
+    yy = np.meshgrid(np.arange(time_steps.size), np.arange(spec.shape[0]))[1]
+    xx = np.zeros_like(yy)
+    coordiantes = [yy, time_steps + xx]
+    warped_spec = map_coordinates(np.abs(spec), coordiantes, mode='reflect', order=1).astype(np.complex)
+
+    # phase vocoder
+    # Phase accumulator; initialize to the first sample
+    spec_angle = np.pad(np.angle(spec), [(0, 0), (0, 1)], mode='constant')
+    phase_acc = spec_angle[:, 0]
+
+    for (t, step) in enumerate(np.floor(time_steps).astype(np.int)):
+        # Store to output array
+        warped_spec[:, t] *= np.exp(1j * phase_acc)
+
+        # Compute phase advance
+        dphase = (spec_angle[:, step + 1] - spec_angle[:, step])
+
+        # Wrap to -pi:pi range
+        dphase = np.mod(dphase - np.pi, 2 * np.pi) - np.pi
+
+        # Accumulate phase
+        phase_acc += dphase
+
+    return warped_spec
+
