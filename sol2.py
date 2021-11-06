@@ -214,8 +214,7 @@ def resize_vocoder(data, ratio):
     window.
 
     You can use the supplied function phase_vocoder(spec, ratio), which scales
-    the spectrogram spec by ratio and corrects the phases. You may also use the
-    function phase_vocoder from librosa, which has a different interface
+    the spectrogram spec by ratio and corrects the phases.
 
     :param data: a 1D ndarray of dtype float64 representing the original sample
     points
@@ -224,8 +223,80 @@ def resize_vocoder(data, ratio):
     :return: the given data rescaled according to ratio with the same datatype
     as data.
     """
+    spec = stft(y=data)
+    # scales the spectrogram spec by ratio and corrects the phases
+    warped_spec = phase_vocoder(spec=spec, ratio=ratio)
+    rescaled_data = istft(stft_matrix=warped_spec)
+    return rescaled_data
 
 
+# ************************* 3 Image derivatives *****************************
+# In both sections (3.1 and 3.2) you should not normalize the magnitude values
+# to be in the range of [0,1].
+# 3.1 Image derivatives in image space
+def conv_der(im):
+    """
+    a function that computes the magnitude of image derivatives. It derives the
+    image in each direction separately (vertical and horizontal) using simple
+    convolution with [0.5, 0, −0.5] as a row and column vectors. Next, it uses
+    these derivative images to compute the magnitude image.
+
+
+    - scipy.signal.convolve2d 2D convolution – use the ’same’ option when you
+    want the output to have the same size as the input
+
+    – np.meshgrid used to create index maps, you can use np.arange instead,
+    and perform the same operations via broadcasing
+
+    - np.complex128 dtype of array with complex numbers.
+
+    – np.fft.fft2, np.fft.ifft2 2D discrete Fast Fourier Transform (and
+    inverse). You can use these functions to check your results from section
+    1.1 and 1.2.
+
+    – np.real (or np.real_if_close) When you return from the frequency domain
+    to the image domain, there might be some very small imaginary part in the
+    matrix elements due to numerical errors. You can ignore them and take only
+    the real part of the matrix.
+
+    :param im: a grayscale images of type float64.
+    :return: the magnitude of the derivative, with the same dtype and shape as
+    the input.
+    """
+    horizonal_derivative_kernel = np.array([0.5, 0, -0.5])
+    vertical_derivative_kernel = np.array([[0.5], [0], [-0.5]])
+    # derive the image in each direction separately (vertical and horizontal)
+    im_post_dx = scipy.signal.convolve2d(in1=im, in2=horizonal_derivative_kernel)  # todo: verify it does dx
+    im_post_dy = scipy.signal.convolve2d(in1=im, in2=vertical_derivative_kernel)  # todo: verify it does dy
+    # The output should be calculated in the following way:
+    magnitude = np.sqrt(np.abs(im_post_dx)**2 + np.abs(im_post_dy)**2)
+    return magnitude
+
+
+# 3.2 Image derivatives in Fourier space
+def fourier_der(im):
+    """
+    a function that computes the magnitude of the image derivatives using
+    Fourier transform. Use DFT, IDFT, and the equations from class, to compute
+    derivatives in the x and y directions. Use np.fft.fftshift in the frequency
+    domain so that the (U,V)=(0,0) frequency will be at the center of the
+    image, and multiply the frequencies in the range [−N/2, ..., N/2] before
+    shifting back.
+    note: You may not assume the image is square.
+    :param im: a float64 grayscale image.
+    :return: a float64 grayscale image.
+    """
+    # compute derivatives in the x and y directions (DFT, IDFT, and the equations from class)
+    fourier_signal = DFT(im)  # dft2d?
+    # derive x
+    # derive y
+
+    # center the (U,V)=(0,0) frequency
+
+    # multiply the frequencies in the range [−N/2, ..., N/2]
+
+    # shifting back
+    np.fft.ifftshift
 
 
 
