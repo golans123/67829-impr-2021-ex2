@@ -5,6 +5,13 @@ import scipy.io.wavfile
 # for ex2_helper
 from scipy import signal
 from scipy.ndimage.interpolation import map_coordinates
+# for sol1 read_image
+import imageio
+import skimage.color
+# NUM_SHADES = 256
+MAX_SHADE_VAL = 255
+GRAY_REPRESENTATION = 1
+# RGB_REPRESENTATION = 2
 # *********************** 1. DFT ********************************
 
 
@@ -19,12 +26,18 @@ def dft_idft_helper(signal, exp_power_coefficient, transform_denominator):
     """
     signal = np.array(signal, dtype=np.complex128)  # = f(x) / F(u)
     N = len(signal)
-    transform = np.array(signal, dtype=np.complex128)
-    x = np.arange(N)  # [0,...,N-1]
-    exp_power = (exp_power_coefficient * math.pi * 1j * x) / N
-    for i in range(N):  # x / u
-        exp_part = np.exp(exp_power * i)
-        transform[i] = np.matmul(signal, exp_part) / transform_denominator
+    exp_power = np.exp((exp_power_coefficient * np.pi * np.complex128(1j)) / N)
+    a, b = np.meshgrid(np.arange(N), np.arange(N))
+    dft_matrix = (a * b)
+    # todo: alternative dft_matrix calculation
+    # a = np.arange(N)
+    # b = np.arange(N)
+    # matrix = np.outer(a, b)  # np.outer(a, a)
+    dft_matrix = np.power(exp_power, dft_matrix)
+    transform = np.matmul(dft_matrix, signal) / transform_denominator
+    # for i in range(N):  # x / u
+    #     exp_part = np.exp( * i)
+    #     transform[i] = np.matmul(signal, exp_part) / transform_denominator
     return transform
 
 
@@ -32,14 +45,11 @@ def DFT(signal):
     """
     Discrete Fourier Transform. should be implemented without the use of loops.
 
-    when the fourier_signal is transformed into a real signal you can expect
-    IDFT to return real values as well, although it may return with a tiny
-    imaginary part. You can ignore the imaginary part.
-
     :param signal: an array of dtype float64 with shape (N,) or (N,1)
     :return: the complex Fourier signal and complex signal, both of the same
     shape as the input. dtype complex 128
     """
+    # -(2*pi*i*u*x)/N
     fourier_transform = dft_idft_helper(signal, -2, 1)
     return fourier_transform
 
@@ -47,32 +57,45 @@ def DFT(signal):
 def IDFT(fourier_signal):
     """
     Inverse DFT. should be implemented without the use of loops.
+
+    when the fourier_signal is transformed into a real signal you can expect
+    IDFT to return real values as well, although it may return with a tiny
+    imaginary part. You can ignore the imaginary part.
+
     :param fourier_signal: an array of dtype complex128 with shape (N,) or (N,1)
     :return: the original signal, of the same shape as an input's element.
     dtype complex 128
     """
-    fourier_signal = np.array(fourier_signal)  # = F(u)
+    # fourier_signal = np.array(fourier_signal)  # = F(u)
     N = len(fourier_signal)
-    # -(2*pi*i*u*x)/N
+    # (2*pi*i*u*x)/N
     inverse_fourier_transform = dft_idft_helper(fourier_signal, 2, N)
-    # signal = inverse_fourier_transform.real
-    # from tips: np.real (or np.real_if_close)
-    return np.real_if_close(inverse_fourier_transform)  # todo: which to use?
+    return inverse_fourier_transform
 
 
 # *********************** 1.2 2D DFT *****************************
+def dft2_idft2_helper(image, func):
+    """
+    if func = DFT does DFT2 if func = IDFT does IDFT2.
+    :param image: image for DFT2/IDFT2
+    :param func: DFT or IDFT
+    :return: transformed image
+    """
+    transform = np.zeros((len(image), len(image[0])), dtype=np.complex128)
+    for i in range(len(image)):
+        transform[i, :] = func(image[i])
+    for i in range(len(transform[0])):
+        transform[:, i] = func(transform[:, i])  # column-wise
+    return transform
+
+
 def DFT2(image):
     """
     DFT in 2D
     :param image: a grayscale image of dtype float64
     :return: fourier_image, shape should be the same as the shape of the input.
     """
-    fourier_image = np.zeros(len(image))
-    for i in range(len(image)):
-        fourier_image[i] = DFT(image[i])
-    for i in range(len(fourier_image[0])):
-        fourier_image[i] = DFT(fourier_image[i])  # fixme: change to column-wise
-    return fourier_image
+    return dft2_idft2_helper(image, DFT)
 
 
 def IDFT2(fourier_image):
@@ -83,12 +106,7 @@ def IDFT2(fourier_image):
     :return: image, the origin of fourier_image is a real image transformed
     with DFT2 you can expect the returned image to be real valued.
     """
-    image = np.zeros(len(fourier_image))
-    for i in range(len(fourier_image)):
-        image[i] = IDFT(fourier_image[i])
-    for i in range(len(image[0])):
-        image[i] = DFT(image[i])  # fixme: change to column-wise
-    return image
+    return dft2_idft2_helper(fourier_image, IDFT)
 
 
 # ********************************  2. Speech Fast Forward  ********************
@@ -106,11 +124,42 @@ def change_rate(filename, ratio):
     :return: None
     """
     rate, data = scipy.io.wavfile.read(filename)
-    scipy.io.wavfile.write(filename="change_rate.wav", rate=rate*ratio,
+    scipy.io.wavfile.write(filename="change_rate.wav", rate=np.int(np.around(rate*ratio)),
                            data=data)
 
 
 # 2.2
+def clip_or_pad(fourier_signal, ratio):
+    """
+    clip or pad to correctly resize signal (avoid artifacts due to resampling).
+    Note 1: In case of slowing down, we add the needed amount of zeros at the
+    high Fourier frequencies.
+
+    Note 2: In case you need to pad with zeros and you have 2 unequal sides,
+    you may choose which side to pad with the one extra 0.
+    example: an array with size 25, and ratio=0.5. pad with 25 zeros, you may
+    choose which side has 13 and which one has 12.
+
+    Note 3: In case you end up with a non-integer, floor it.
+    :param fourier_signal: centered fourier signal
+    :param ratio:
+    :return:
+    """
+    fourier_signal_len = len(fourier_signal)
+    if ratio >= 1:  # clip
+        start_index = int(np.floor(fourier_signal_len / (2 * ratio)))
+        end_index = fourier_signal_len - \
+                    int(np.ceil(fourier_signal_len / (2 * ratio)))
+        fourier_signal = fourier_signal[start_index:end_index]
+    elif ratio < 1:  # pad
+        temp = np.zeros(int(fourier_signal_len/ratio))
+        start_index = int(np.floor((fourier_signal_len*(1/ratio - 1)) / 2))
+        end_index = fourier_signal_len + start_index
+        np.put(temp, np.arange(start_index, end_index), fourier_signal)
+        fourier_signal = temp
+    return fourier_signal
+
+
 def resize(data, ratio):
     """
     data is a 1D ndarray of dtype float64 or complex128(*) representing
@@ -127,11 +176,11 @@ def resize(data, ratio):
     fourier_signal = DFT(data)
     # shift the zero-frequency component to the center of the spectrum
     fourier_signal = np.fft.fftshift(fourier_signal)
-    # todo: clip the high frequencies.
-    fourier_signal = fourier_signal[:]
+    # clip the high frequencies / pad with zeros.
+    # effectively does resampling in the frequency domain
+    fourier_signal = clip_or_pad(fourier_signal, ratio)
     # shift back frequencies order
     fourier_signal = np.fft.ifftshift(fourier_signal)
-    # convert back to a signal
     new_sample_points = IDFT(fourier_signal)
     return new_sample_points
 
@@ -141,6 +190,7 @@ def change_samples(filename, ratio):
     that changes the duration of an audio file by reducing the number of
     samples using Fourier. This function does not change the sample rate of
     the given file.
+
     The result should be saved in a file called change_samples.wav.
 
     This function will call the function resize(data, ratio) to change the
@@ -153,19 +203,11 @@ def change_samples(filename, ratio):
     representing the new sample points
     """
     rate, data = scipy.io.wavfile.read(filename)
-    new_sample_points = resize(data, ratio)
+    print("initial data   ", len(data), data)
+    new_sample_points = np.int16(np.around(np.real(resize(data, ratio))))  # todo: check. delete the casting to int
+    print("new data   ", len(new_sample_points), new_sample_points)
     scipy.io.wavfile.write(filename="change_rate.wav", rate=rate,
                            data=new_sample_points)
-    # todo:
-    # Note 1: In case of slowing down, we add the needed amount of zeros at the
-    # high Fourier frequencies.
-
-    # Note 2: In case you need to pad with zeros and you have 2 unequal sides,
-    # you may choose which side to pad with the one extra 0.
-    # example: an array with size 25, and ratio=0.5. pad with 25 zeros, you may
-    # choose which side has 13 and which one has 12.
-
-    # Note 3: In case you end up with a non-integer, floor it.
     return new_sample_points
 
 
@@ -223,6 +265,7 @@ def resize_vocoder(data, ratio):
     :return: the given data rescaled according to ratio with the same datatype
     as data.
     """
+    # transfer the data to the spectrogram
     spec = stft(y=data)
     # scales the spectrogram spec by ratio and corrects the phases
     warped_spec = phase_vocoder(spec=spec, ratio=ratio)
@@ -241,7 +284,6 @@ def conv_der(im):
     convolution with [0.5, 0, −0.5] as a row and column vectors. Next, it uses
     these derivative images to compute the magnitude image.
 
-
     - scipy.signal.convolve2d 2D convolution – use the ’same’ option when you
     want the output to have the same size as the input
 
@@ -250,30 +292,44 @@ def conv_der(im):
 
     - np.complex128 dtype of array with complex numbers.
 
-    – np.fft.fft2, np.fft.ifft2 2D discrete Fast Fourier Transform (and
-    inverse). You can use these functions to check your results from section
-    1.1 and 1.2.
-
-    – np.real (or np.real_if_close) When you return from the frequency domain
-    to the image domain, there might be some very small imaginary part in the
-    matrix elements due to numerical errors. You can ignore them and take only
-    the real part of the matrix.
-
     :param im: a grayscale images of type float64.
     :return: the magnitude of the derivative, with the same dtype and shape as
     the input.
     """
-    horizonal_derivative_kernel = np.array([0.5, 0, -0.5])
+    horizonal_derivative_kernel = np.array([[0.5, 0, -0.5]])
     vertical_derivative_kernel = np.array([[0.5], [0], [-0.5]])
     # derive the image in each direction separately (vertical and horizontal)
-    im_post_dx = scipy.signal.convolve2d(in1=im, in2=horizonal_derivative_kernel)  # todo: verify it does dx
-    im_post_dy = scipy.signal.convolve2d(in1=im, in2=vertical_derivative_kernel)  # todo: verify it does dy
+    im_post_dx = scipy.signal.convolve2d(in1=im, in2=horizonal_derivative_kernel, mode='same')
+    im_post_dy = scipy.signal.convolve2d(in1=im, in2=vertical_derivative_kernel, mode='same')
     # The output should be calculated in the following way:
     magnitude = np.sqrt(np.abs(im_post_dx)**2 + np.abs(im_post_dy)**2)
     return magnitude
 
 
 # 3.2 Image derivatives in Fourier space
+def x_derivative(fourier_image):
+    # derive dft
+    N = fourier_image.shape[0]
+    # multiply the frequencies in the range [−N/2, ..., N/2]
+    u = np.arange(-(np.floor(N/2)), (np.ceil(N/2))).astype(np.int64)
+    # u = u.reshape(u.size, 1)
+    fourier_image = np.multiply(u, fourier_image)
+    # idft
+    x_derived_fourier_image = ((2 * np.pi * 1j)/N) * IDFT2(fourier_image)
+    return x_derived_fourier_image
+
+
+def y_derivative(fourier_image):
+    # derive dft
+    N = fourier_image.shape[1]
+    # multiply the frequencies in the range [−N/2, ..., N/2]
+    v = np.arange(-(np.floor(N/2)), np.ceil(N/2)).astype(np.int64)  # col-wise image[0]
+    fourier_image = np.multiply(v[:, np.newaxis], fourier_image)
+    # idft
+    y_derived_fourier_image = ((2 * np.pi * 1j) / N) * IDFT2(fourier_image)
+    return y_derived_fourier_image
+
+
 def fourier_der(im):
     """
     a function that computes the magnitude of the image derivatives using
@@ -286,57 +342,17 @@ def fourier_der(im):
     :param im: a float64 grayscale image.
     :return: a float64 grayscale image.
     """
-    # compute derivatives in the x and y directions (DFT, IDFT, and the equations from class)
-    fourier_signal = DFT(im)  # dft2d?
-    # derive x
-    # derive y
-
+    # dft2
+    fourier_image = DFT2(im)
     # center the (U,V)=(0,0) frequency
-
-    # multiply the frequencies in the range [−N/2, ..., N/2]
-
+    fourier_image = np.fft.fftshift(fourier_image)
+    # compute derivatives in the x and y directions (DFT, IDFT, and the equations from class)
+    x_derived_fourier_image = x_derivative(fourier_image)
+    # derive y
+    xy_derived_fourier_image = y_derivative(x_derived_fourier_image)
     # shifting back
-    np.fft.ifftshift
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    xy_derived_image = np.fft.ifftshift(xy_derived_fourier_image)
+    return xy_derived_image
 
 
 # ************************* from ex2_helper ********************************
@@ -402,4 +418,27 @@ def phase_vocoder(spec, ratio):
         phase_acc += dphase
 
     return warped_spec
+
+
+# ********************** from sol1 ****************************************
+def read_image(filename, representation):
+    """
+    a function which reads an image file and converts it into a given
+    representation.
+    :param filename: the filename of an image on disk (could be grayscale or
+    RGB).
+    :param representation: a grayscale image (1) or an RGB image (2).
+    :return: an image represented by a matrix of type np.float64 with
+    intensities (either grayscale or RGB channel intensities)
+    normalized to the range [0; 1].
+
+    You will find the function rgb2gray from the module skimage.color useful,
+    as well as imread from
+    imageio. We won't ask you to convert a grayscale image to RGB.
+    """
+    image = imageio.imread(filename).astype(np.float64)
+    if representation == GRAY_REPRESENTATION:
+        image = skimage.color.rgb2gray(image)
+    # normalize intensities
+    return image / MAX_SHADE_VAL
 
