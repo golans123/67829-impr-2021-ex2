@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import scipy.io.wavfile
 # for ex2_helper
@@ -17,19 +18,17 @@ GRAY_REPRESENTATION = 1
 def dft_idft_helper(signal, exp_power_coefficient, transform_denominator):
     """
 
-    :param signal:
+    :param signal:= f(x) / F(u)
     :param exp_power_coefficient: -2 for dft, 2 for idft
     :param transform_denominator: 1 for dft, (1/len(signal)) for idft
     :return:
     """
-    signal = np.array(signal, dtype=np.complex128)  # = f(x) / F(u)
     N = len(signal)
-    exp_part = np.exp((exp_power_coefficient * np.pi * np.complex128(1j)) / N)
-    a, b = np.meshgrid(np.arange(N), np.arange(N))
-    dft_matrix = (a * b)
-    dft_matrix = np.power(exp_part, dft_matrix)
+    u = np.arange(N)
+    x = u.reshape((N, 1))
+    dft_matrix = np.exp(exp_power_coefficient * 1j * np.pi * x * u / N)
     transform = np.matmul(dft_matrix, signal) / transform_denominator
-    return transform
+    return np.array(transform).astype(np.complex128)
 
 
 def DFT(signal):
@@ -53,11 +52,11 @@ def IDFT(fourier_signal):
     IDFT to return real values as well, although it may return with a tiny
     imaginary part. You can ignore the imaginary part.
 
-    :param fourier_signal: an array of dtype complex128 with shape (N,) or (N,1)
+    :param fourier_signal: an array of dtype complex128 with shape (N,) or
+    (N,1)
     :return: the original signal, of the same shape as an input's element.
     dtype complex 128
     """
-    # fourier_signal = np.array(fourier_signal)  # = F(u)
     N = len(fourier_signal)
     # (2*pi*i*u*x)/N
     inverse_fourier_transform = dft_idft_helper(fourier_signal, 2, N)
@@ -100,7 +99,7 @@ def IDFT2(fourier_image):
     return dft2_idft2_helper(fourier_image, IDFT)
 
 
-# ********************************  2. Speech Fast Forward  ********************
+# ********************************  2. Speech Fast Forward  *******************
 # 2.1
 def change_rate(filename, ratio):
     """
@@ -115,8 +114,8 @@ def change_rate(filename, ratio):
     :return: None
     """
     rate, data = scipy.io.wavfile.read(filename)
-    scipy.io.wavfile.write(filename="change_rate.wav", rate=np.int(np.around(rate*ratio)),
-                           data=data)
+    scipy.io.wavfile.write(filename="change_rate.wav", rate=np.int(
+        np.around(rate*ratio)), data=data)
 
 
 # 2.2
@@ -138,19 +137,14 @@ def clip_or_pad(fourier_signal, ratio):
     """
     fourier_signal_len = len(fourier_signal)
     if ratio > 1:  # clip
-        # fixme: floor/ceil/around
-        start_index = int(np.around(fourier_signal_len/2) -
-                          fourier_signal_len/(2*ratio))
-        end_index = fourier_signal_len - \
-                    int(np.around(fourier_signal_len / (2 * ratio)))
-        fourier_signal = fourier_signal[start_index:end_index]
+        clip_amount = fourier_signal_len - math.floor(fourier_signal_len/ratio)
+        fourier_signal = fourier_signal[math.floor(clip_amount/2):
+                                        -math.ceil(clip_amount/2)]
     elif ratio < 1:  # pad
-        temp = np.zeros(int(fourier_signal_len/ratio), dtype=np.complex128)
-        start_index = int(np.floor((fourier_signal_len*(1/ratio - 1)) / 2))
-        end_index = fourier_signal_len + 2*start_index  # todo: is correct?
-        # fixme: "np.put" casts to real... or maybe since "temp" is real
-        np.put(temp, np.arange(start_index, end_index), fourier_signal)
-        fourier_signal = temp
+        pad_amount = math.floor(fourier_signal_len/ratio - fourier_signal_len)
+        fourier_signal = np.pad(fourier_signal, (math.floor(pad_amount/2),
+                                                 math.ceil(pad_amount/2)),
+                                "constant")
     return fourier_signal
 
 
@@ -178,7 +172,7 @@ def resize(data, ratio):
     new_sample_points = IDFT(fourier_signal)
     return new_sample_points
 
-
+  # todo: review all funcs' return types
 def change_samples(filename, ratio):
     """
     that changes the duration of an audio file by reducing the number of
@@ -197,13 +191,10 @@ def change_samples(filename, ratio):
     representing the new sample points
     """
     rate, data = scipy.io.wavfile.read(filename)
-    print("initial data   ", len(data), data)
-    # todo: check. delete the casting to int for submission. review all funcs' return types
-    new_sample_points = np.real(resize(data, ratio)).astype(np.int16)
-    print("new data   ", len(new_sample_points), new_sample_points)
+    new_sample_points = np.real(resize(data, ratio))
     scipy.io.wavfile.write(filename="change_samples.wav", rate=rate,
                            data=new_sample_points)
-    return new_sample_points
+    return new_sample_points.astype(np.float64)
 
 
 # 2.3
@@ -231,12 +222,11 @@ def resize_spectrogram(data, ratio):
     """
     # transfer the data to the spectrogram
     spectrogram = stft(y=data)
-
     # resize each row in the spectrogram using resize according to ratio.
-    # todo: ratio is well-rounded
-    new_spectrogram = [] # np.empty((len(spectrogram), len(spectrogram[0])*int(ratio)), dtype=np.int64)
+    new_spectrogram = []
     for i in range(len(spectrogram)):
-        new_spectrogram.insert(len(new_spectrogram), resize(spectrogram[i], ratio))
+        new_spectrogram.insert(len(new_spectrogram), resize(spectrogram[i],
+                                                            ratio))
     new_spectrogram = np.array(new_spectrogram)
     # transfer the data back from a spectrogram
     new_sample_points = istft(stft_matrix=new_spectrogram)
@@ -295,8 +285,12 @@ def conv_der(im):
     horizonal_derivative_kernel = np.array([[0.5, 0, -0.5]])
     vertical_derivative_kernel = np.array([[0.5], [0], [-0.5]])
     # derive the image in each direction separately (vertical and horizontal)
-    im_post_dx = scipy.signal.convolve2d(in1=im, in2=horizonal_derivative_kernel, mode='same')
-    im_post_dy = scipy.signal.convolve2d(in1=im, in2=vertical_derivative_kernel, mode='same')
+    im_post_dx = scipy.signal.convolve2d(in1=im,
+                                         in2=horizonal_derivative_kernel,
+                                         mode='same')
+    im_post_dy = scipy.signal.convolve2d(in1=im,
+                                         in2=vertical_derivative_kernel,
+                                         mode='same')
     # The output should be calculated in the following way:
     magnitude = np.sqrt(np.abs(im_post_dx)**2 + np.abs(im_post_dy)**2)
     return magnitude
@@ -326,7 +320,8 @@ def derive_image_by_axis(image, shape_index):
     # shifting back
     fourier_image = np.fft.ifftshift(fourier_image)
     # idft2
-    axis_derived_image = ((2 * np.pi * 1j) / fourier_image.shape[1]) * IDFT2(fourier_image)
+    axis_derived_image = ((2 * np.pi * 1j) / fourier_image.shape[1]) * \
+                         IDFT2(fourier_image)
     return axis_derived_image
 
 
@@ -342,11 +337,13 @@ def fourier_der(im):
     :param im: a float64 grayscale image.
     :return: a float64 grayscale image.
     """
-    # compute derivatives in the x and y directions (DFT, IDFT, and the equations from class)
+    # compute derivatives in the x and y directions (DFT, IDFT, and the
+    # equations from class)
     x_derived_image = derive_image_by_axis(im, shape_index=0)
     # derive y
     y_derived_image = derive_image_by_axis(im, shape_index=1)
-    magnitude = np.sqrt(np.abs(x_derived_image) ** 2 + np.abs(y_derived_image) ** 2)
+    magnitude = np.sqrt(np.abs(x_derived_image) ** 2 + np.abs(y_derived_image)
+                        ** 2)
     return magnitude
 
 
@@ -392,7 +389,8 @@ def phase_vocoder(spec, ratio):
     yy = np.meshgrid(np.arange(time_steps.size), np.arange(spec.shape[0]))[1]
     xx = np.zeros_like(yy)
     coordiantes = [yy, time_steps + xx]
-    warped_spec = map_coordinates(np.abs(spec), coordiantes, mode='reflect', order=1).astype(np.complex)
+    warped_spec = map_coordinates(np.abs(spec), coordiantes, mode='reflect',
+                                  order=1).astype(np.complex)
 
     # phase vocoder
     # Phase accumulator; initialize to the first sample

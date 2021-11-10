@@ -1,0 +1,9 @@
+Q2:
+Record yourself using your smartphone (or any other recording device) and 
+fast forward it using both resize_spectrogram and resize_vocoder.
+Generate two audio files from the new samples, and explain the differences.
+
+A2:
+in resize_spectrogram there is no phase correction, thus there is wave interference
+and the audio gets a bit corrupted. That's unlike the result of resize_vocoder.,
+which has  phase correction, and thus sounds better.

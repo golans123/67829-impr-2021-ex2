@@ -1,0 +1,4 @@
+Q3: Why did you get two different magnitude images?
+
+in fourier it's a real derivative, while in convolution it's only an 
+approximation
