@@ -1,5 +1,3 @@
-import math
-
 import numpy as np
 import scipy.io.wavfile
 # for ex2_helper
@@ -26,18 +24,11 @@ def dft_idft_helper(signal, exp_power_coefficient, transform_denominator):
     """
     signal = np.array(signal, dtype=np.complex128)  # = f(x) / F(u)
     N = len(signal)
-    exp_power = np.exp((exp_power_coefficient * np.pi * np.complex128(1j)) / N)
+    exp_part = np.exp((exp_power_coefficient * np.pi * np.complex128(1j)) / N)
     a, b = np.meshgrid(np.arange(N), np.arange(N))
     dft_matrix = (a * b)
-    # todo: alternative dft_matrix calculation
-    # a = np.arange(N)
-    # b = np.arange(N)
-    # matrix = np.outer(a, b)  # np.outer(a, a)
-    dft_matrix = np.power(exp_power, dft_matrix)
+    dft_matrix = np.power(exp_part, dft_matrix)
     transform = np.matmul(dft_matrix, signal) / transform_denominator
-    # for i in range(N):  # x / u
-    #     exp_part = np.exp( * i)
-    #     transform[i] = np.matmul(signal, exp_part) / transform_denominator
     return transform
 
 
@@ -146,15 +137,18 @@ def clip_or_pad(fourier_signal, ratio):
     :return:
     """
     fourier_signal_len = len(fourier_signal)
-    if ratio >= 1:  # clip
-        start_index = int(np.floor(fourier_signal_len / (2 * ratio)))
+    if ratio > 1:  # clip
+        # fixme: floor/ceil/around
+        start_index = int(np.around(fourier_signal_len/2) -
+                          fourier_signal_len/(2*ratio))
         end_index = fourier_signal_len - \
-                    int(np.ceil(fourier_signal_len / (2 * ratio)))
+                    int(np.around(fourier_signal_len / (2 * ratio)))
         fourier_signal = fourier_signal[start_index:end_index]
     elif ratio < 1:  # pad
-        temp = np.zeros(int(fourier_signal_len/ratio))
+        temp = np.zeros(int(fourier_signal_len/ratio), dtype=np.complex128)
         start_index = int(np.floor((fourier_signal_len*(1/ratio - 1)) / 2))
-        end_index = fourier_signal_len + start_index
+        end_index = fourier_signal_len + 2*start_index  # todo: is correct?
+        # fixme: "np.put" casts to real... or maybe since "temp" is real
         np.put(temp, np.arange(start_index, end_index), fourier_signal)
         fourier_signal = temp
     return fourier_signal
@@ -205,9 +199,9 @@ def change_samples(filename, ratio):
     rate, data = scipy.io.wavfile.read(filename)
     print("initial data   ", len(data), data)
     # todo: check. delete the casting to int for submission. review all funcs' return types
-    new_sample_points = np.int16(np.around(np.real(resize(data, ratio))))
+    new_sample_points = np.real(resize(data, ratio)).astype(np.int16)
     print("new data   ", len(new_sample_points), new_sample_points)
-    scipy.io.wavfile.write(filename="change_rate.wav", rate=rate,
+    scipy.io.wavfile.write(filename="change_samples.wav", rate=rate,
                            data=new_sample_points)
     return new_sample_points
 
@@ -236,16 +230,17 @@ def resize_spectrogram(data, ratio):
     datatype as data.
     """
     # transfer the data to the spectrogram
-    transposed_stft_matrix = stft(y=data)
+    spectrogram = stft(y=data)
 
     # resize each row in the spectrogram using resize according to ratio.
-    new_sample_points = np.zeros(len(transposed_stft_matrix))
-    for i in range(len(transposed_stft_matrix)):
-        new_sample_points[i] = resize(data, ratio)
-
+    # todo: ratio is well-rounded
+    new_spectrogram = [] # np.empty((len(spectrogram), len(spectrogram[0])*int(ratio)), dtype=np.int64)
+    for i in range(len(spectrogram)):
+        new_spectrogram.insert(len(new_spectrogram), resize(spectrogram[i], ratio))
+    new_spectrogram = np.array(new_spectrogram)
     # transfer the data back from a spectrogram
-    y_rec = istft(stft_matrix=new_sample_points)
-    return y_rec
+    new_sample_points = istft(stft_matrix=new_spectrogram)
+    return new_sample_points
 
 
 # 2.4
@@ -267,9 +262,9 @@ def resize_vocoder(data, ratio):
     as data.
     """
     # transfer the data to the spectrogram
-    spec = stft(y=data)
+    spectrogram = stft(y=data)
     # scales the spectrogram spec by ratio and corrects the phases
-    warped_spec = phase_vocoder(spec=spec, ratio=ratio)
+    warped_spec = phase_vocoder(spec=spectrogram, ratio=ratio)
     rescaled_data = istft(stft_matrix=warped_spec)
     return rescaled_data
 
@@ -308,42 +303,31 @@ def conv_der(im):
 
 
 # 3.2 Image derivatives in Fourier space
-def x_derivative(image):
+def derive_image_by_axis(image, shape_index):
+    """
+    applying the equation from class for derivative calculation.
+    :param image:
+    :param shape_index:
+    :return:
+    """
     # dft2
     fourier_image = DFT2(image)
     # center the (U,V)=(0,0) frequency
     fourier_image = np.fft.fftshift(fourier_image)
-
     # derive dft
-    N = fourier_image.shape[0]
+    N = fourier_image.shape[shape_index]
     # multiply the frequencies in the range [−N/2, ..., N/2]
-    u = np.arange(-(np.floor(N/2)), (np.ceil(N/2))).astype(np.int64)
-    fourier_image = np.multiply(u[:, np.newaxis], fourier_image)
-
+    if shape_index == 0:
+        u = np.arange(-(np.floor(N / 2)), (np.ceil(N / 2))).astype(np.int64)
+        fourier_image = np.multiply(u[:, np.newaxis], fourier_image)
+    else:  # shape_index == 1
+        v = np.arange(-(np.floor(N / 2)), (np.ceil(N / 2))).astype(np.int64)
+        fourier_image = np.multiply(v, fourier_image)
     # shifting back
     fourier_image = np.fft.ifftshift(fourier_image)
     # idft2
-    x_derived_image = ((2 * np.pi * 1j)/fourier_image.shape[1]) * IDFT2(fourier_image)
-    return x_derived_image  # todo:should idft2 be here?
-
-
-def y_derivative(image):
-    # dft2
-    fourier_image = DFT2(image)
-    # center the (U,V)=(0,0) frequency
-    fourier_image = np.fft.fftshift(fourier_image)
-
-    # derive dft
-    N = fourier_image.shape[1]
-    # multiply the frequencies in the range [−N/2, ..., N/2]
-    v = np.arange(-(np.floor(N/2)), np.ceil(N/2)).astype(np.int64)
-    fourier_image = np.multiply(v, fourier_image)
-
-    # shifting back
-    fourier_image = np.fft.ifftshift(fourier_image)
-    # idft
-    y_derived_image = ((2 * np.pi * 1j) / fourier_image.shape[0]) * IDFT2(fourier_image)
-    return y_derived_image
+    axis_derived_image = ((2 * np.pi * 1j) / fourier_image.shape[1]) * IDFT2(fourier_image)
+    return axis_derived_image
 
 
 def fourier_der(im):
@@ -359,9 +343,9 @@ def fourier_der(im):
     :return: a float64 grayscale image.
     """
     # compute derivatives in the x and y directions (DFT, IDFT, and the equations from class)
-    x_derived_image = x_derivative(im)
+    x_derived_image = derive_image_by_axis(im, shape_index=0)
     # derive y
-    y_derived_image = y_derivative(im)
+    y_derived_image = derive_image_by_axis(im, shape_index=1)
     magnitude = np.sqrt(np.abs(x_derived_image) ** 2 + np.abs(y_derived_image) ** 2)
     return magnitude
 
@@ -452,4 +436,3 @@ def read_image(filename, representation):
         image = skimage.color.rgb2gray(image)
     # normalize intensities
     return image / MAX_SHADE_VAL
-
