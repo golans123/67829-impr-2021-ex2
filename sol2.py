@@ -204,7 +204,8 @@ def change_samples(filename, ratio):
     """
     rate, data = scipy.io.wavfile.read(filename)
     print("initial data   ", len(data), data)
-    new_sample_points = np.int16(np.around(np.real(resize(data, ratio))))  # todo: check. delete the casting to int
+    # todo: check. delete the casting to int for submission. review all funcs' return types
+    new_sample_points = np.int16(np.around(np.real(resize(data, ratio))))
     print("new data   ", len(new_sample_points), new_sample_points)
     scipy.io.wavfile.write(filename="change_rate.wav", rate=rate,
                            data=new_sample_points)
@@ -307,27 +308,42 @@ def conv_der(im):
 
 
 # 3.2 Image derivatives in Fourier space
-def x_derivative(fourier_image):
+def x_derivative(image):
+    # dft2
+    fourier_image = DFT2(image)
+    # center the (U,V)=(0,0) frequency
+    fourier_image = np.fft.fftshift(fourier_image)
+
     # derive dft
     N = fourier_image.shape[0]
     # multiply the frequencies in the range [−N/2, ..., N/2]
     u = np.arange(-(np.floor(N/2)), (np.ceil(N/2))).astype(np.int64)
-    # u = u.reshape(u.size, 1)
-    fourier_image = np.multiply(u, fourier_image)
-    # idft
-    x_derived_fourier_image = ((2 * np.pi * 1j)/N) * IDFT2(fourier_image)
-    return x_derived_fourier_image
+    fourier_image = np.multiply(u[:, np.newaxis], fourier_image)
+
+    # shifting back
+    fourier_image = np.fft.ifftshift(fourier_image)
+    # idft2
+    x_derived_image = ((2 * np.pi * 1j)/fourier_image.shape[1]) * IDFT2(fourier_image)
+    return x_derived_image  # todo:should idft2 be here?
 
 
-def y_derivative(fourier_image):
+def y_derivative(image):
+    # dft2
+    fourier_image = DFT2(image)
+    # center the (U,V)=(0,0) frequency
+    fourier_image = np.fft.fftshift(fourier_image)
+
     # derive dft
     N = fourier_image.shape[1]
     # multiply the frequencies in the range [−N/2, ..., N/2]
-    v = np.arange(-(np.floor(N/2)), np.ceil(N/2)).astype(np.int64)  # col-wise image[0]
-    fourier_image = np.multiply(v[:, np.newaxis], fourier_image)
+    v = np.arange(-(np.floor(N/2)), np.ceil(N/2)).astype(np.int64)
+    fourier_image = np.multiply(v, fourier_image)
+
+    # shifting back
+    fourier_image = np.fft.ifftshift(fourier_image)
     # idft
-    y_derived_fourier_image = ((2 * np.pi * 1j) / N) * IDFT2(fourier_image)
-    return y_derived_fourier_image
+    y_derived_image = ((2 * np.pi * 1j) / fourier_image.shape[0]) * IDFT2(fourier_image)
+    return y_derived_image
 
 
 def fourier_der(im):
@@ -342,17 +358,12 @@ def fourier_der(im):
     :param im: a float64 grayscale image.
     :return: a float64 grayscale image.
     """
-    # dft2
-    fourier_image = DFT2(im)
-    # center the (U,V)=(0,0) frequency
-    fourier_image = np.fft.fftshift(fourier_image)
     # compute derivatives in the x and y directions (DFT, IDFT, and the equations from class)
-    x_derived_fourier_image = x_derivative(fourier_image)
+    x_derived_image = x_derivative(im)
     # derive y
-    xy_derived_fourier_image = y_derivative(x_derived_fourier_image)
-    # shifting back
-    xy_derived_image = np.fft.ifftshift(xy_derived_fourier_image)
-    return xy_derived_image
+    y_derived_image = y_derivative(im)
+    magnitude = np.sqrt(np.abs(x_derived_image) ** 2 + np.abs(y_derived_image) ** 2)
+    return magnitude
 
 
 # ************************* from ex2_helper ********************************
