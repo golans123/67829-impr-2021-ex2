@@ -24,9 +24,9 @@ def dft_idft_helper(signal, exp_power_coefficient, transform_denominator):
     :return:
     """
     N = len(signal)
-    u = np.arange(N)
-    x = u.reshape((N, 1))
-    dft_matrix = np.exp(exp_power_coefficient * 1j * np.pi * x * u / N)
+    a = np.arange(N)
+    b = a.reshape((N, 1))
+    dft_matrix = np.exp(exp_power_coefficient * 1j * np.pi * b * a / N)
     transform = np.matmul(dft_matrix, signal) / transform_denominator
     return np.array(transform).astype(np.complex128)
 
@@ -172,6 +172,7 @@ def resize(data, ratio):
     new_sample_points = IDFT(fourier_signal)
     return new_sample_points
 
+
   # todo: review all funcs' return types
 def change_samples(filename, ratio):
     """
@@ -293,7 +294,7 @@ def conv_der(im):
                                          mode='same')
     # The output should be calculated in the following way:
     magnitude = np.sqrt(np.abs(im_post_dx)**2 + np.abs(im_post_dy)**2)
-    return magnitude
+    return np.array(magnitude).astype(np.float64)
 
 
 # 3.2 Image derivatives in Fourier space
@@ -344,7 +345,7 @@ def fourier_der(im):
     y_derived_image = derive_image_by_axis(im, shape_index=1)
     magnitude = np.sqrt(np.abs(x_derived_image) ** 2 + np.abs(y_derived_image)
                         ** 2)
-    return magnitude
+    return np.array(magnitude).astype(np.float64)
 
 
 # ************************* from ex2_helper ********************************

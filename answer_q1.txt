@@ -1,0 +1,12 @@
+Question 1
+Run change_rate and change_samples with the given WAV file aria_4kHz.wav and a ratio of 2.
+Listen to both change_rate.wav and change samples.wav. Can you explain the reason for the 
+difference between the two?
+
+Answer 1
+change_rate returns a fast-forward version with a higher pitch than the original file, while 
+change_samples returns a fast-forward version with the same pitch as the original file. The
+reason for the difference is that increasing the rate of play compresses the signal, thus
+increasing it's frequency, resulting in a signal with a higher pitch. On the other hand,
+changing the number of sample and playing them in the original rate, results in a shorter audio,
+since the are less tones to play, but it is not compressed, and thus stays in the same pitch.

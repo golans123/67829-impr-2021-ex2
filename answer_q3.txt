@@ -1,4 +1,6 @@
 Q3: Why did you get two different magnitude images?
 
-in fourier it's a real derivative, while in convolution it's only an 
-approximation
+A3:
+In fourier_der the derivative is calculated accurately based on rules of
+deriving, while in conv_der it is calculated only approximately, using the 
+derivative definition (epsilon = 1, not --> 0).
