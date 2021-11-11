@@ -176,7 +176,6 @@ def resize(data, ratio):
     return new_sample_points
 
 
-  # todo: review all funcs' return types
 def change_samples(filename, ratio):
     """
     that changes the duration of an audio file by reducing the number of
