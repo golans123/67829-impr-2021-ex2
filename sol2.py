@@ -17,12 +17,14 @@ GRAY_REPRESENTATION = 1
 # *********************** 1.1 1D DFT *****************************
 def dft_idft_helper(signal, exp_power_coefficient, transform_denominator):
     """
-
+    dtype float64 with shape (N,) or (N,1)
     :param signal:= f(x) / F(u)
     :param exp_power_coefficient: -2 for dft, 2 for idft
     :param transform_denominator: 1 for dft, (1/len(signal)) for idft
     :return:
     """
+    # dtype float64 with shape (N,) or (N,1)
+    signal = signal.reshape(signal.shape[0])
     N = len(signal)
     a = np.arange(N)
     b = a.reshape((N, 1))
@@ -41,7 +43,7 @@ def DFT(signal):
     """
     # -(2*pi*i*u*x)/N
     fourier_transform = dft_idft_helper(signal, -2, 1)
-    return fourier_transform
+    return fourier_transform.reshape(signal.shape)
 
 
 def IDFT(fourier_signal):
@@ -60,7 +62,7 @@ def IDFT(fourier_signal):
     N = len(fourier_signal)
     # (2*pi*i*u*x)/N
     inverse_fourier_transform = dft_idft_helper(fourier_signal, 2, N)
-    return inverse_fourier_transform
+    return inverse_fourier_transform.reshape(fourier_signal.shape)
 
 
 # *********************** 1.2 2D DFT *****************************
@@ -71,6 +73,7 @@ def dft2_idft2_helper(image, func):
     :param func: DFT or IDFT
     :return: transformed image
     """
+    image = image.reshape(image.shape[0], image.shape[1])
     transform = np.zeros((len(image), len(image[0])), dtype=np.complex128)
     for i in range(len(image)):
         transform[i, :] = func(image[i])
@@ -85,7 +88,7 @@ def DFT2(image):
     :param image: a grayscale image of dtype float64
     :return: fourier_image, shape should be the same as the shape of the input.
     """
-    return dft2_idft2_helper(image, DFT)
+    return dft2_idft2_helper(image, DFT).reshape(image.shape)
 
 
 def IDFT2(fourier_image):
@@ -96,7 +99,7 @@ def IDFT2(fourier_image):
     :return: image, the origin of fourier_image is a real image transformed
     with DFT2 you can expect the returned image to be real valued.
     """
-    return dft2_idft2_helper(fourier_image, IDFT)
+    return dft2_idft2_helper(fourier_image, IDFT).reshape(fourier_image.shape)
 
 
 # ********************************  2. Speech Fast Forward  *******************
